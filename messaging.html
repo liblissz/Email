@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp-like Chat Application</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- FontAwesome Icons for UI -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f1f1f1;
+        }
+
+        .chat-container {
+            max-width: 800px;
+            margin: 50px auto;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+        }
+
+        .chat-header {
+            padding: 15px;
+            background-color: #075E54;
+            color: white;
+            border-radius: 10px 10px 0 0;
+            text-align: center;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .chat-messages .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 10px;
+            max-width: 70%;
+        }
+
+        .chat-messages .message.you {
+            background-color: #DCF8C6;
+            align-self: flex-end;
+        }
+
+        .chat-messages .message.other {
+            background-color: #ECE5DD;
+            align-self: flex-start;
+        }
+
+        .chat-input {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #ddd;
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid #ccc;
+        }
+
+        .chat-input button {
+            padding: 10px;
+            margin-left: 10px;
+            background-color: #075E54;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .chat-input button:hover {
+            background-color: #128C7E;
+        }
+
+        .message audio {
+            max-width: 100%;
+        }
+
+        .record-btn {
+            background-color: #25D366;
+        }
+
+        .stop-btn {
+            background-color: #FF3B30;
+        }
+    </style>
+</head>
+<body>
+
+<div class="chat-container">
+    <div class="chat-header">
+        <h3>Chat with John Doe</h3>
+    </div>
+    <div id="messages" class="chat-messages">
+        <!-- Messages will be dynamically added here -->
+    </div>
+    <div class="chat-input">
+        <button id="recordButton" class="record-btn">
+            <i class="fas fa-microphone"></i>
+        </button>
+        <input type="text" id="messageInput" placeholder="Type a message..." />
+        <button id="sendButton">
+            <i class="fas fa-paper-plane"></i>
+        </button>
+    </div>
+</div>
+
+<!-- Pusher.js for real-time features -->
+<script src="https://js.pusher.com/7.0/pusher.min.js"></script>
+
+<script>
+    // Setup for recording
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioBlob;
+    let audioUrl;
+    let audioElement;
+
+    const messagesDiv = document.getElementById('messages');
+    const messageInput = document.getElementById('messageInput');
+    const sendButton = document.getElementById('sendButton');
+    const recordButton = document.getElementById('recordButton');
+    let isRecording = false;
+
+    // Function to access the microphone
+    async function requestMicrophoneAccess() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            return stream;
+        } catch (err) {
+            alert("Error: Please allow microphone access.");
+            throw err;
+        }
+    }
+
+    // Start recording
+    async function startRecording() {
+        const stream = await requestMicrophoneAccess();
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = () => {
+            audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+            audioUrl = URL.createObjectURL(audioBlob);
+            const audioMessage = {
+                type: 'audio',
+                url: audioUrl
+            };
+            displayMessage('you', audioMessage);
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        recordButton.classList.add('stop-btn');
+        recordButton.classList.remove('record-btn');
+        recordButton.innerHTML = '<i class="fas fa-stop"></i>';
+    }
+
+    // Stop recording
+    function stopRecording() {
+        if (mediaRecorder) {
+            mediaRecorder.stop();
+        }
+        isRecording = false;
+        recordButton.classList.add('record-btn');
+        recordButton.classList.remove('stop-btn');
+        recordButton.innerHTML = '<i class="fas fa-microphone"></i>';
+    }
+
+    // Display message (text or audio)
+    function displayMessage(sender, message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message', sender === 'you' ? 'you' : 'other');
+        
+        if (message.type === 'audio') {
+            const audioElement = document.createElement('audio');
+            audioElement.controls = true;
+            audioElement.src = message.url;
+            messageDiv.appendChild(audioElement);
+        } else {
+            messageDiv.textContent = message.text;
+        }
+
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // Handle record button click
+    recordButton.addEventListener('click', () => {
+        if (isRecording) {
+            stopRecording();
+        } else {
+            startRecording();
+        }
+    });
+
+    // Handle send button click (sending both text and audio)
+    sendButton.addEventListener('click', () => {
+        const textMessage = messageInput.value.trim();
+        if (textMessage) {
+            const message = {
+                type: 'text',
+                text: textMessage
+            };
+            displayMessage('you', message);
+            messageInput.value = ''; // Clear input after sending text message
+        }
+
+        if (audioBlob) {
+            const message = {
+                type: 'audio',
+                url: audioUrl
+            };
+            displayMessage('you', message);
+            audioBlob = null; // Reset audioBlob after sending
+            audioUrl = null;
+        }
+    });
+
+    // Simulating real-time chat updates with Pusher
+    Pusher.logToConsole = true;
+    const pusher = new Pusher('your-app-key', {
+        cluster: 'your-cluster'
+    });
+
+    const channel = pusher.subscribe('chat');
+    channel.bind('message', function(data) {
+        displayMessage('other', data.message);
+    });
+
+</script>
+
+</body>
+</html>
